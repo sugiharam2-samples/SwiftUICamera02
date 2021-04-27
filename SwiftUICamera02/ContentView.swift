@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import AVFoundation
 import MetalKit
 
 struct ContentView: View {
@@ -26,6 +27,8 @@ class BaseMetalView: UIView {
 	private var renderPassDescriptor = MTLRenderPassDescriptor()
 	private var renderPipelineState: MTLRenderPipelineState!
 	private var metalLayer = CAMetalLayer()
+	private var videoImage: MTLTexture?
+	private var captureSession: AVCaptureSession!
 
 	override func layoutSubviews() {
 		super.layoutSubviews()
@@ -40,12 +43,28 @@ class BaseMetalView: UIView {
 
 		commandQueue = device.makeCommandQueue()
 
-		guard let library = device.makeDefaultLibrary() else {fatalError()}
+		guard let library = device.makeDefaultLibrary() else { return }
 		let descriptor = MTLRenderPipelineDescriptor()
 		descriptor.vertexFunction = library.makeFunction(name: "vertexShader")
 		descriptor.fragmentFunction = library.makeFunction(name: "fragmentShader")
 		descriptor.colorAttachments[0].pixelFormat = .bgra8Unorm
 		renderPipelineState = try! device.makeRenderPipelineState(descriptor: descriptor)
+
+		guard let device = AVCaptureDevice.DiscoverySession(deviceTypes: [.builtInWideAngleCamera],
+															mediaType: .video,
+															position: .unspecified)
+				.devices.first(where: { $0.position == .front }),
+			  let input = try? AVCaptureDeviceInput(device: device) else { return }
+		let output = AVCaptureVideoDataOutput()
+		output.videoSettings = [kCVPixelBufferPixelFormatTypeKey as AnyHashable as! String : Int(kCVPixelFormatType_32BGRA)]
+		let queue = DispatchQueue(label: "myqueue", attributes: .concurrent)
+		output.setSampleBufferDelegate(self, queue: queue)
+		output.alwaysDiscardsLateVideoFrames = true
+
+		captureSession = AVCaptureSession()
+		captureSession.addInput(input)
+		captureSession.addOutput(output)
+		captureSession.startRunning()
 	}()
 
 	func draw() {
@@ -59,7 +78,7 @@ class BaseMetalView: UIView {
 			-1,  1, 0, 1,
 			 1,  1, 0, 1,
 			-1, -1, 0, 1,
-			 0, -1, 0, 1,
+			 1, -1, 0, 1,
 		]
 		let texCoords: [Float] = [
 			0, 0,
@@ -75,7 +94,7 @@ class BaseMetalView: UIView {
 		encoder.setRenderPipelineState(renderPipelineState)
 		encoder.setVertexBuffer(bufferPositions, offset: 0, index: 0)
 		encoder.setVertexBuffer(bufferTexCoords, offset: 0, index:1)
-		encoder.setFragmentTexture(nil, index: 0)
+		encoder.setFragmentTexture(videoImage, index: 0)
 		encoder.drawPrimitives(type: .triangleStrip,
 							   vertexStart: 0,
 							   vertexCount: positions.count / 4)
@@ -83,6 +102,28 @@ class BaseMetalView: UIView {
 		encoder.endEncoding()
 		commandBuffer.present(drawable)
 		commandBuffer.commit()
+	}
+}
+
+extension BaseMetalView: AVCaptureVideoDataOutputSampleBufferDelegate {
+	func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
+		DispatchQueue.main.sync {
+			if let buffer = CMSampleBufferGetImageBuffer(sampleBuffer) {
+				CVPixelBufferLockBaseAddress(buffer, .readOnly)
+				let width = CVPixelBufferGetWidth(buffer)
+				let height = CVPixelBufferGetHeight(buffer)
+
+				var textureCache : CVMetalTextureCache?
+				CVMetalTextureCacheCreate(kCFAllocatorDefault, nil, self.device, nil, &textureCache)
+
+				var imageTexture: CVMetalTexture?
+				_ = CVMetalTextureCacheCreateTextureFromImage(kCFAllocatorDefault, textureCache!, buffer, nil, .bgra8Unorm, width, height, 0, &imageTexture)
+
+				self.videoImage = CVMetalTextureGetTexture(imageTexture!)
+				CVPixelBufferUnlockBaseAddress(buffer, .readOnly)
+				draw()
+			}
+		}
 	}
 }
 
