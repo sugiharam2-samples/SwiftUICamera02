@@ -20,110 +20,97 @@ struct MetalView: UIViewRepresentable {
 	func updateUIView(_ uiView: UIViewType, context: Context) {}
 }
 
-class BaseMetalView: UIView {
-	let device = MTLCreateSystemDefaultDevice()!
+class BaseMetalView: UIView, AVCaptureVideoDataOutputSampleBufferDelegate {
+	private let metalLayer = CAMetalLayer()
+	private let device = MTLCreateSystemDefaultDevice()!
+	private lazy var commandQueue = device.makeCommandQueue()
+	private let renderPassDescriptor = MTLRenderPassDescriptor()
+	private lazy var renderPipelineState: MTLRenderPipelineState! = {
+		guard let library = device.makeDefaultLibrary() else { return nil }
+		let descriptor = MTLRenderPipelineDescriptor()
+		descriptor.vertexFunction = library.makeFunction(name: "vertexShader")
+		descriptor.fragmentFunction = library.makeFunction(name: "fragmentShader")
+		descriptor.colorAttachments[0].pixelFormat = .bgra8Unorm
+		return try? device.makeRenderPipelineState(descriptor: descriptor)
+	}()
+	private let captureSession = AVCaptureSession()
 
-	private var commandQueue: MTLCommandQueue!
-	private var renderPassDescriptor = MTLRenderPassDescriptor()
-	private var renderPipelineState: MTLRenderPipelineState!
-	private var metalLayer = CAMetalLayer()
-	private var videoImage: MTLTexture?
-	private var captureSession: AVCaptureSession!
+	let vertexData: [[Float]] = [
+		// 0: positions
+		[
+			-1, 1, 0, 1,
+			1, 1, 0, 1,
+			-1, -1, 0, 1,
+			1, -1, 0, 1,
+		],
+		// 1: texCoords
+		[
+			0, 0,
+			0, 1,
+			1, 0,
+			1, 1,
+		],
+	]
 
 	override func layoutSubviews() {
 		super.layoutSubviews()
 		_ = initCaptureSession
 		metalLayer.frame = layer.frame
-		draw()
 	}
 
 	lazy var initCaptureSession: Void = {
 		metalLayer.device = device
 		layer.addSublayer(metalLayer)
 
-		commandQueue = device.makeCommandQueue()
+		guard let captureDevice = AVCaptureDevice.DiscoverySession(deviceTypes: [.builtInWideAngleCamera],
+																   mediaType: .video,
+																   position: .front).devices.first,
+			  let input = try? AVCaptureDeviceInput(device: captureDevice) else { return }
 
-		guard let library = device.makeDefaultLibrary() else { return }
-		let descriptor = MTLRenderPipelineDescriptor()
-		descriptor.vertexFunction = library.makeFunction(name: "vertexShader")
-		descriptor.fragmentFunction = library.makeFunction(name: "fragmentShader")
-		descriptor.colorAttachments[0].pixelFormat = .bgra8Unorm
-		renderPipelineState = try! device.makeRenderPipelineState(descriptor: descriptor)
-
-		guard let device = AVCaptureDevice.DiscoverySession(deviceTypes: [.builtInWideAngleCamera],
-															mediaType: .video,
-															position: .unspecified)
-				.devices.first(where: { $0.position == .front }),
-			  let input = try? AVCaptureDeviceInput(device: device) else { return }
 		let output = AVCaptureVideoDataOutput()
-		output.videoSettings = [kCVPixelBufferPixelFormatTypeKey as AnyHashable as! String : Int(kCVPixelFormatType_32BGRA)]
-		let queue = DispatchQueue(label: "myqueue", attributes: .concurrent)
-		output.setSampleBufferDelegate(self, queue: queue)
-		output.alwaysDiscardsLateVideoFrames = true
+		output.videoSettings = [kCVPixelBufferPixelFormatTypeKey: kCVPixelFormatType_32BGRA] as [String : Any]
+		output.setSampleBufferDelegate(self, queue: DispatchQueue.main)
 
-		captureSession = AVCaptureSession()
 		captureSession.addInput(input)
 		captureSession.addOutput(output)
 		captureSession.startRunning()
 	}()
 
-	func draw() {
+	func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
+		guard let buffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
+		CVPixelBufferLockBaseAddress(buffer, .readOnly)
+
+		let width = CVPixelBufferGetWidth(buffer)
+		let height = CVPixelBufferGetHeight(buffer)
+
+		var textureCache: CVMetalTextureCache!
+		CVMetalTextureCacheCreate(kCFAllocatorDefault, nil, device, nil, &textureCache)
+		var texture: CVMetalTexture!
+		_ = CVMetalTextureCacheCreateTextureFromImage(kCFAllocatorDefault, textureCache, buffer, nil, .bgra8Unorm, width, height, 0, &texture)
+
 		guard let drawable = metalLayer.nextDrawable(),
-			  let commandBuffer = commandQueue.makeCommandBuffer() else { return }
+			  let commandBuffer = commandQueue?.makeCommandBuffer() else { return }
 
 		renderPassDescriptor.colorAttachments[0].texture = drawable.texture
-		let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor)!
-
-		let positions: [Float] = [
-			-1,  1, 0, 1,
-			 1,  1, 0, 1,
-			-1, -1, 0, 1,
-			 1, -1, 0, 1,
-		]
-		let texCoords: [Float] = [
-			0, 0,
-			0, 1,
-			1, 0,
-			1, 1,
-		]
-		let sizePos = positions.count * MemoryLayout.size(ofValue: positions[0])
-		let bufferPositions = device.makeBuffer(bytes: positions, length: sizePos)
-		let sizeTex = texCoords.count * MemoryLayout.size(ofValue: texCoords[0])
-		let bufferTexCoords = device.makeBuffer(bytes: texCoords, length: sizeTex)
-
+		guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor) else { return }
 		encoder.setRenderPipelineState(renderPipelineState)
-		encoder.setVertexBuffer(bufferPositions, offset: 0, index: 0)
-		encoder.setVertexBuffer(bufferTexCoords, offset: 0, index:1)
-		encoder.setFragmentTexture(videoImage, index: 0)
+
+		vertexData.enumerated().forEach { i, array in
+			let size = array.count * MemoryLayout.size(ofValue: array[0])
+			let buffer = device.makeBuffer(bytes: array, length: size)
+			encoder.setVertexBuffer(buffer, offset: 0, index: i)
+		}
+
+		encoder.setFragmentTexture(CVMetalTextureGetTexture(texture), index: 0)
 		encoder.drawPrimitives(type: .triangleStrip,
 							   vertexStart: 0,
-							   vertexCount: positions.count / 4)
+							   vertexCount: vertexData[0].count / 4)
 
 		encoder.endEncoding()
 		commandBuffer.present(drawable)
 		commandBuffer.commit()
-	}
-}
 
-extension BaseMetalView: AVCaptureVideoDataOutputSampleBufferDelegate {
-	func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
-		DispatchQueue.main.sync {
-			if let buffer = CMSampleBufferGetImageBuffer(sampleBuffer) {
-				CVPixelBufferLockBaseAddress(buffer, .readOnly)
-				let width = CVPixelBufferGetWidth(buffer)
-				let height = CVPixelBufferGetHeight(buffer)
-
-				var textureCache : CVMetalTextureCache?
-				CVMetalTextureCacheCreate(kCFAllocatorDefault, nil, self.device, nil, &textureCache)
-
-				var imageTexture: CVMetalTexture?
-				_ = CVMetalTextureCacheCreateTextureFromImage(kCFAllocatorDefault, textureCache!, buffer, nil, .bgra8Unorm, width, height, 0, &imageTexture)
-
-				self.videoImage = CVMetalTextureGetTexture(imageTexture!)
-				CVPixelBufferUnlockBaseAddress(buffer, .readOnly)
-				draw()
-			}
-		}
+		CVPixelBufferUnlockBaseAddress(buffer, .readOnly)
 	}
 }
 
