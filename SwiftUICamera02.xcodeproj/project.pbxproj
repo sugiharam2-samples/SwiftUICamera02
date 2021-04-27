@@ -11,6 +11,7 @@
 		B830A7D02637D10300E65903 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B830A7CF2637D10300E65903 /* ContentView.swift */; };
 		B830A7D22637D10400E65903 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B830A7D12637D10400E65903 /* Assets.xcassets */; };
 		B830A7D52637D10400E65903 /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B830A7D42637D10400E65903 /* Preview Assets.xcassets */; };
+		B830A7DE2637D79200E65903 /* Shader.metal in Sources */ = {isa = PBXBuildFile; fileRef = B830A7DD2637D79200E65903 /* Shader.metal */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -20,6 +21,7 @@
 		B830A7D12637D10400E65903 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		B830A7D42637D10400E65903 /* Preview Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Preview Assets.xcassets"; sourceTree = "<group>"; };
 		B830A7D62637D10400E65903 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		B830A7DD2637D79200E65903 /* Shader.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = Shader.metal; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -54,6 +56,7 @@
 			children = (
 				B830A7CD2637D10300E65903 /* SwiftUICamera02App.swift */,
 				B830A7CF2637D10300E65903 /* ContentView.swift */,
+				B830A7DD2637D79200E65903 /* Shader.metal */,
 				B830A7D12637D10400E65903 /* Assets.xcassets */,
 				B830A7D62637D10400E65903 /* Info.plist */,
 				B830A7D32637D10400E65903 /* Preview Content */,
@@ -138,6 +141,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B830A7DE2637D79200E65903 /* Shader.metal in Sources */,
 				B830A7D02637D10300E65903 /* ContentView.swift in Sources */,
 				B830A7CE2637D10300E65903 /* SwiftUICamera02App.swift in Sources */,
 			);
