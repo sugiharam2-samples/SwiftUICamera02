@@ -39,17 +39,17 @@ class BaseCameraView: UIView, AVCaptureVideoDataOutputSampleBufferDelegate {
 	let vertexData: [[Float]] = [
 		// 0: positions
 		[
-			-1, 1, 0, 1,
-			1, 1, 0, 1,
 			-1, -1, 0, 1,
+			-1, 1, 0, 1,
 			1, -1, 0, 1,
+			1, 1, 0, 1,
 		],
 		// 1: texCoords
 		[
-			0, 0,
 			0, 1,
-			1, 0,
+			0, 0,
 			1, 1,
+			1, 0,
 		],
 	]
 
@@ -75,6 +75,10 @@ class BaseCameraView: UIView, AVCaptureVideoDataOutputSampleBufferDelegate {
 		captureSession.addInput(input)
 		captureSession.addOutput(output)
 		captureSession.startRunning()
+		captureSession.connections.forEach {
+			$0.videoOrientation = .portrait
+			$0.isVideoMirrored = true
+		}
 	}()
 
 	func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
