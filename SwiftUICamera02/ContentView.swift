@@ -12,6 +12,7 @@ import MetalKit
 struct ContentView: View {
     var body: some View {
 		CameraView()
+			.edgesIgnoringSafeArea(.all)
     }
 }
 
@@ -36,23 +37,6 @@ class BaseCameraView: UIView, AVCaptureVideoDataOutputSampleBufferDelegate {
 	let captureSession = AVCaptureSession()
 	var lockFlag = false
 
-	let vertexData: [[Float]] = [
-		// 0: positions
-		[
-			-1, -1, 0, 1,
-			-1, 1, 0, 1,
-			1, -1, 0, 1,
-			1, 1, 0, 1,
-		],
-		// 1: texCoords
-		[
-			0, 1,
-			0, 0,
-			1, 1,
-			1, 0,
-		],
-	]
-
 	override func layoutSubviews() {
 		super.layoutSubviews()
 		_ = initCaptureSession
@@ -62,6 +46,10 @@ class BaseCameraView: UIView, AVCaptureVideoDataOutputSampleBufferDelegate {
 	lazy var initCaptureSession: Void = {
 		metalLayer.device = device
 		layer.addSublayer(metalLayer)
+
+		renderPassDescriptor.colorAttachments[0].loadAction = .clear
+		renderPassDescriptor.colorAttachments[0].storeAction = .store
+		renderPassDescriptor.colorAttachments[0].clearColor = MTLClearColorMake(0, 0, 0, 0)
 
 		guard let captureDevice = AVCaptureDevice.DiscoverySession(deviceTypes: [.builtInWideAngleCamera],
 																   mediaType: .video,
@@ -102,6 +90,24 @@ class BaseCameraView: UIView, AVCaptureVideoDataOutputSampleBufferDelegate {
 		renderPassDescriptor.colorAttachments[0].texture = drawable.texture
 		guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor) else { return }
 		encoder.setRenderPipelineState(renderPipelineState)
+
+		let aspect = Float(frame.width / frame.height) * Float(height) / Float(width)
+		let vertexData: [[Float]] = [
+			// 0: positions
+			[
+				-1, -aspect, 0, 1,
+				-1, aspect, 0, 1,
+				1, -aspect, 0, 1,
+				1, aspect, 0, 1,
+			],
+			// 1: texCoords
+			[
+				0, 1,
+				0, 0,
+				1, 1,
+				1, 0,
+			],
+		]
 
 		vertexData.enumerated().forEach { i, array in
 			let size = array.count * MemoryLayout.size(ofValue: array[0])
