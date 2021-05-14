@@ -10,31 +10,15 @@ import AVFoundation
 import MetalKit
 
 struct ContentView: View {
-	@State var aspect: CGFloat = 1
-
 	var body: some View {
-		CameraView(aspect: $aspect)
-			.aspectRatio(aspect, contentMode: .fit)
-    }
+		CameraView()
+			.edgesIgnoringSafeArea(.all)
+	}
 }
 
 struct CameraView: UIViewRepresentable {
-	@Binding var aspect: CGFloat
-
-	func makeUIView(context: Context) -> some UIView {
-		let view = BaseCameraView()
-		view.coordinator = context.coordinator
-		return view
-	}
-	func updateUIView(_ uiView: UIViewType, context: Context) { uiView.layoutSubviews() }
-	func makeCoordinator() -> CameraCoordinator { CameraCoordinator(aspect: $aspect) }
-}
-
-class CameraCoordinator {
-	@Binding var aspect: CGFloat
-	init(aspect: Binding<CGFloat>) {
-		_aspect = aspect
-	}
+	func makeUIView(context: Context) -> some UIView { BaseCameraView() }
+	func updateUIView(_ uiView: UIViewType, context: Context) {}
 }
 
 class BaseCameraView: UIView, AVCaptureVideoDataOutputSampleBufferDelegate {
@@ -52,17 +36,21 @@ class BaseCameraView: UIView, AVCaptureVideoDataOutputSampleBufferDelegate {
 	}()
 	let captureSession = AVCaptureSession()
 	var lockFlag = false
-	var coordinator: CameraCoordinator?
 
 	override func layoutSubviews() {
 		super.layoutSubviews()
-		_ = initCaptureSession
+		_ = initMetalAndCaptureSession
 		metalLayer.frame = layer.frame
 	}
 
-	lazy var initCaptureSession: Void = {
+	lazy var initMetalAndCaptureSession: Void = {
 		metalLayer.device = device
+		metalLayer.isOpaque = false
 		layer.addSublayer(metalLayer)
+
+		renderPassDescriptor.colorAttachments[0].loadAction = .clear
+		renderPassDescriptor.colorAttachments[0].storeAction = .store
+		renderPassDescriptor.colorAttachments[0].clearColor = MTLClearColorMake(0, 0, 0, 0)
 
 		guard let captureDevice = AVCaptureDevice.DiscoverySession(deviceTypes: [.builtInWideAngleCamera],
 																   mediaType: .video,
@@ -91,7 +79,6 @@ class BaseCameraView: UIView, AVCaptureVideoDataOutputSampleBufferDelegate {
 
 		let width = CVPixelBufferGetWidth(buffer)
 		let height = CVPixelBufferGetHeight(buffer)
-		coordinator?.aspect = CGFloat(width) / CGFloat(height)
 
 		var textureCache: CVMetalTextureCache!
 		CVMetalTextureCacheCreate(kCFAllocatorDefault, nil, device, nil, &textureCache)
@@ -105,13 +92,14 @@ class BaseCameraView: UIView, AVCaptureVideoDataOutputSampleBufferDelegate {
 		guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor) else { return }
 		encoder.setRenderPipelineState(renderPipelineState)
 
+		let aspect = Float(frame.width / frame.height) * Float(height) / Float(width)
 		let vertexData: [[Float]] = [
 			// 0: positions
 			[
-				-1, -1, 0, 1,
-				-1, 1, 0, 1,
-				1, -1, 0, 1,
-				1, 1, 0, 1,
+				-1, -aspect, 0, 1,
+				-1, aspect, 0, 1,
+				1, -aspect, 0, 1,
+				1, aspect, 0, 1,
 			],
 			// 1: texCoords
 			[
@@ -143,7 +131,7 @@ class BaseCameraView: UIView, AVCaptureVideoDataOutputSampleBufferDelegate {
 }
 
 struct ContentView_Previews: PreviewProvider {
-    static var previews: some View {
-        ContentView()
-    }
+	static var previews: some View {
+		ContentView()
+	}
 }
