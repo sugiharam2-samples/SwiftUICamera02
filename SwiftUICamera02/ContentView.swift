@@ -10,15 +10,31 @@ import AVFoundation
 import MetalKit
 
 struct ContentView: View {
-    var body: some View {
-		CameraView()
-			.edgesIgnoringSafeArea(.all)
+	@State var aspect: CGFloat = 1
+
+	var body: some View {
+		CameraView(aspect: $aspect)
+			.aspectRatio(aspect, contentMode: .fit)
     }
 }
 
 struct CameraView: UIViewRepresentable {
-	func makeUIView(context: Context) -> some UIView { BaseCameraView() }
-	func updateUIView(_ uiView: UIViewType, context: Context) {}
+	@Binding var aspect: CGFloat
+
+	func makeUIView(context: Context) -> some UIView {
+		let view = BaseCameraView()
+		view.coordinator = context.coordinator
+		return view
+	}
+	func updateUIView(_ uiView: UIViewType, context: Context) { uiView.layoutSubviews() }
+	func makeCoordinator() -> CameraCoordinator { CameraCoordinator(aspect: $aspect) }
+}
+
+class CameraCoordinator {
+	@Binding var aspect: CGFloat
+	init(aspect: Binding<CGFloat>) {
+		_aspect = aspect
+	}
 }
 
 class BaseCameraView: UIView, AVCaptureVideoDataOutputSampleBufferDelegate {
@@ -36,6 +52,7 @@ class BaseCameraView: UIView, AVCaptureVideoDataOutputSampleBufferDelegate {
 	}()
 	let captureSession = AVCaptureSession()
 	var lockFlag = false
+	var coordinator: CameraCoordinator?
 
 	override func layoutSubviews() {
 		super.layoutSubviews()
@@ -74,6 +91,7 @@ class BaseCameraView: UIView, AVCaptureVideoDataOutputSampleBufferDelegate {
 
 		let width = CVPixelBufferGetWidth(buffer)
 		let height = CVPixelBufferGetHeight(buffer)
+		coordinator?.aspect = CGFloat(width) / CGFloat(height)
 
 		var textureCache: CVMetalTextureCache!
 		CVMetalTextureCacheCreate(kCFAllocatorDefault, nil, device, nil, &textureCache)
@@ -87,7 +105,6 @@ class BaseCameraView: UIView, AVCaptureVideoDataOutputSampleBufferDelegate {
 		guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor) else { return }
 		encoder.setRenderPipelineState(renderPipelineState)
 
-		let aspect = 1 - Float(frame.width / frame.height) * Float(height) / Float(width)
 		let vertexData: [[Float]] = [
 			// 0: positions
 			[
@@ -98,10 +115,10 @@ class BaseCameraView: UIView, AVCaptureVideoDataOutputSampleBufferDelegate {
 			],
 			// 1: texCoords
 			[
-				0, 1 + aspect / 2,
-				0, -aspect / 2,
-				1, 1 + aspect / 2,
-				1, -aspect / 2,
+				0, 1,
+				0, 0,
+				1, 1,
+				1, 0,
 			],
 		]
 
