@@ -11,21 +11,21 @@ import MetalKit
 
 struct ContentView: View {
     var body: some View {
-		MetalView()
+		CameraView()
     }
 }
 
-struct MetalView: UIViewRepresentable {
-	func makeUIView(context: Context) -> some UIView { BaseMetalView() }
+struct CameraView: UIViewRepresentable {
+	func makeUIView(context: Context) -> some UIView { BaseCameraView() }
 	func updateUIView(_ uiView: UIViewType, context: Context) {}
 }
 
-class BaseMetalView: UIView, AVCaptureVideoDataOutputSampleBufferDelegate {
-	private let metalLayer = CAMetalLayer()
-	private let device = MTLCreateSystemDefaultDevice()!
-	private lazy var commandQueue = device.makeCommandQueue()
-	private let renderPassDescriptor = MTLRenderPassDescriptor()
-	private lazy var renderPipelineState: MTLRenderPipelineState! = {
+class BaseCameraView: UIView, AVCaptureVideoDataOutputSampleBufferDelegate {
+	let metalLayer = CAMetalLayer()
+	let device = MTLCreateSystemDefaultDevice()!
+	lazy var commandQueue = device.makeCommandQueue()
+	let renderPassDescriptor = MTLRenderPassDescriptor()
+	lazy var renderPipelineState: MTLRenderPipelineState! = {
 		guard let library = device.makeDefaultLibrary() else { return nil }
 		let descriptor = MTLRenderPipelineDescriptor()
 		descriptor.vertexFunction = library.makeFunction(name: "vertexShader")
@@ -33,7 +33,8 @@ class BaseMetalView: UIView, AVCaptureVideoDataOutputSampleBufferDelegate {
 		descriptor.colorAttachments[0].pixelFormat = .bgra8Unorm
 		return try? device.makeRenderPipelineState(descriptor: descriptor)
 	}()
-	private let captureSession = AVCaptureSession()
+	let captureSession = AVCaptureSession()
+	var lockFlag = false
 
 	let vertexData: [[Float]] = [
 		// 0: positions
@@ -77,6 +78,9 @@ class BaseMetalView: UIView, AVCaptureVideoDataOutputSampleBufferDelegate {
 	}()
 
 	func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
+		if lockFlag { return }
+		lockFlag = true
+
 		guard let buffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
 		CVPixelBufferLockBaseAddress(buffer, .readOnly)
 
@@ -111,6 +115,7 @@ class BaseMetalView: UIView, AVCaptureVideoDataOutputSampleBufferDelegate {
 		commandBuffer.commit()
 
 		CVPixelBufferUnlockBaseAddress(buffer, .readOnly)
+		lockFlag = false
 	}
 }
 
