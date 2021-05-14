@@ -47,10 +47,6 @@ class BaseCameraView: UIView, AVCaptureVideoDataOutputSampleBufferDelegate {
 		metalLayer.device = device
 		layer.addSublayer(metalLayer)
 
-		renderPassDescriptor.colorAttachments[0].loadAction = .clear
-		renderPassDescriptor.colorAttachments[0].storeAction = .store
-		renderPassDescriptor.colorAttachments[0].clearColor = MTLClearColorMake(0, 0, 0, 0)
-
 		guard let captureDevice = AVCaptureDevice.DiscoverySession(deviceTypes: [.builtInWideAngleCamera],
 																   mediaType: .video,
 																   position: .front).devices.first,
@@ -91,21 +87,21 @@ class BaseCameraView: UIView, AVCaptureVideoDataOutputSampleBufferDelegate {
 		guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor) else { return }
 		encoder.setRenderPipelineState(renderPipelineState)
 
-		let aspect = Float(frame.width / frame.height) * Float(height) / Float(width)
+		let aspect = 1 - Float(frame.width / frame.height) * Float(height) / Float(width)
 		let vertexData: [[Float]] = [
 			// 0: positions
 			[
-				-1, -aspect, 0, 1,
-				-1, aspect, 0, 1,
-				1, -aspect, 0, 1,
-				1, aspect, 0, 1,
+				-1, -1, 0, 1,
+				-1, 1, 0, 1,
+				1, -1, 0, 1,
+				1, 1, 0, 1,
 			],
 			// 1: texCoords
 			[
-				0, 1,
-				0, 0,
-				1, 1,
-				1, 0,
+				0, 1 + aspect / 2,
+				0, -aspect / 2,
+				1, 1 + aspect / 2,
+				1, -aspect / 2,
 			],
 		]
 

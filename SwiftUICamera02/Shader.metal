@@ -29,6 +29,6 @@ fragment float4
 fragmentShader(RasterizerData in [[ stage_in ]],
 			   texture2d<float, access::sample> texture [[ texture(0) ]])
 {
-	constexpr sampler sampler2d(coord::normalized, filter::linear, address::repeat);
+	constexpr sampler sampler2d(coord::normalized, filter::linear, address::clamp_to_zero);
 	return texture.sample(sampler2d, in.texCoord);
 }
